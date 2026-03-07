@@ -2,10 +2,9 @@
 
 namespace Andriichuk\HttpClientLogger;
 
+use Illuminate\Http\Client\PendingRequest;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use Andriichuk\HttpClientLogger\Commands\HttpClientLoggerCommand;
-use Illuminate\Http\Client\PendingRequest;
 
 class HttpClientLoggerServiceProvider extends PackageServiceProvider
 {
