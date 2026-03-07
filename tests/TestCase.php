@@ -1,10 +1,10 @@
 <?php
 
-namespace VendorName\Skeleton\Tests;
+namespace Andriichuk\HttpClientLogger\Tests;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Orchestra\Testbench\TestCase as Orchestra;
-use VendorName\Skeleton\SkeletonServiceProvider;
+use Andriichuk\HttpClientLogger\HttpClientLoggerServiceProvider;
 
 class TestCase extends Orchestra
 {
@@ -13,25 +13,43 @@ class TestCase extends Orchestra
         parent::setUp();
 
         Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'VendorName\\Skeleton\\Database\\Factories\\'.class_basename($modelName).'Factory'
+            fn (string $modelName) => 'Andriichuk\\HttpClientLogger\\Database\\Factories\\'.class_basename($modelName).'Factory'
         );
     }
 
     protected function getPackageProviders($app)
     {
         return [
-            SkeletonServiceProvider::class,
+            HttpClientLoggerServiceProvider::class,
         ];
     }
 
-    public function getEnvironmentSetUp($app)
+    protected function getEnvironmentSetUp($app): void
     {
-        config()->set('database.default', 'testing');
+        $app['config']->set('database.default', 'testing');
 
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
+        $config = require __DIR__.'/../config/http-client-logger.php';
+        $app['config']->set('http-client-logger', $config);
+
+        $app['config']->set('logging.channels.http_client', [
+            'driver' => 'single',
+            'path' => storage_path('logs/http_client_test.log'),
+            'level' => 'debug',
+        ]);
+    }
+
+    protected function getLogContent(): string
+    {
+        $path = storage_path('logs/http_client_test.log');
+
+        return file_exists($path) ? file_get_contents($path) : '';
+    }
+
+    protected function clearLog(): void
+    {
+        $path = storage_path('logs/http_client_test.log');
+        if (file_exists($path)) {
+            @unlink($path);
+        }
     }
 }

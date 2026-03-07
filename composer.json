@@ -1,24 +1,37 @@
 {
-    "name": ":vendor_slug/:package_slug",
-    "description": ":package_description",
+    "name": "andriichuk/laravel-http-client-logger",
+    "description": "Configurable request/response logger for Laravel HTTP client with sanitization and status filters",
     "keywords": [
-        ":vendor_name",
         "laravel",
-        ":package_slug"
+        "http-client",
+        "logging",
+        "http",
+        "api",
+        "guzzle",
+        "middleware",
+        "request",
+        "response"
     ],
-    "homepage": "https://github.com/:vendor_slug/:package_slug",
+    "homepage": "https://github.com/andriichuk/laravel-http-client-logger",
     "license": "MIT",
     "authors": [
         {
-            "name": ":author_name",
-            "email": "author@domain.com",
+            "name": "Serhii Andriichuk",
+            "email": "andriichuk29@gmail.com",
+            "homepage": "https://github.com/andriichuk",
             "role": "Developer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/andriichuk/laravel-http-client-logger/issues",
+        "source": "https://github.com/andriichuk/laravel-http-client-logger"
+    },
     "require": {
         "php": "^8.4",
-        "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^11.0||^12.0"
+        "guzzlehttp/guzzle": "^7.0",
+        "illuminate/http": "^11.0||^12.0",
+        "illuminate/support": "^11.0||^12.0",
+        "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
         "laravel/pint": "^1.14",
@@ -30,18 +43,17 @@
         "pestphp/pest-plugin-laravel": "^4.0",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan-deprecation-rules": "^2.0",
-        "phpstan/phpstan-phpunit": "^2.0",
-        "spatie/laravel-ray": "^1.35"
+        "phpstan/phpstan-phpunit": "^2.0"
     },
     "autoload": {
         "psr-4": {
-            "VendorName\\Skeleton\\": "src/",
-            "VendorName\\Skeleton\\Database\\Factories\\": "database/factories/"
+            "Andriichuk\\HttpClientLogger\\": "src/",
+            "Andriichuk\\HttpClientLogger\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "VendorName\\Skeleton\\Tests\\": "tests/",
+            "Andriichuk\\HttpClientLogger\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/"
         }
     },
@@ -63,13 +75,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "VendorName\\Skeleton\\SkeletonServiceProvider"
-            ],
-            "aliases": {
-                "Skeleton": "VendorName\\Skeleton\\Facades\\Skeleton"
-            }
+                "Andriichuk\\HttpClientLogger\\HttpClientLoggerServiceProvider"
+            ]
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }

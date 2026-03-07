@@ -1,68 +1,122 @@
-# :package_description
+# Laravel HTTP Client Logger
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/:vendor_slug/:package_slug/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/:vendor_slug/:package_slug/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-<!--delete-->
----
-This repo can be used to scaffold a Laravel package. Follow these steps to get started:
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/andriichuk/laravel-http-client-logger.svg?style=flat-square)](https://packagist.org/packages/andriichuk/laravel-http-client-logger)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/andriichuk/laravel-http-client-logger/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/andriichuk/laravel-http-client-logger/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/andriichuk/laravel-http-client-logger/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/andriichuk/laravel-http-client-logger/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/andriichuk/laravel-http-client-logger.svg?style=flat-square)](https://packagist.org/packages/andriichuk/laravel-http-client-logger)
 
-1. Press the "Use this template" button at the top of this repo to create a new repo with the contents of this skeleton.
-2. Run "php ./configure.php" to run a script that will replace all placeholders throughout all the files.
-3. Have fun creating your package.
-4. If you need help creating a package, consider picking up our <a href="https://laravelpackage.training">Laravel Package Training</a> video course.
----
-<!--/delete-->
-This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
-
-## Support us
-
-[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/:package_name.jpg?t=1" width="419px" />](https://spatie.be/github-ad-click/:package_name)
-
-We invest a lot of resources into creating [best in class open source packages](https://spatie.be/open-source). You can support us by [buying one of our paid products](https://spatie.be/open-source/support-us).
-
-We highly appreciate you sending us a postcard from your hometown, mentioning which of our package(s) you are using. You'll find our address on [our contact page](https://spatie.be/about-us). We publish all received postcards on [our virtual postcard wall](https://spatie.be/open-source/postcards).
+A configurable logger for Laravel’s HTTP client (outgoing requests). Log request and response details to a dedicated channel with optional sanitization of sensitive data, status filters, and configurable headers—ideal for APIs and third-party integrations.
 
 ## Installation
 
-You can install the package via composer:
+Install the package via Composer:
 
 ```bash
-composer require :vendor_slug/:package_slug
+composer require andriichuk/laravel-http-client-logger
 ```
 
-You can publish and run the migrations with:
+Publish the config file:
 
 ```bash
-php artisan vendor:publish --tag=":package_slug-migrations"
-php artisan migrate
+php artisan vendor:publish --tag="laravel-http-client-logger-config"
 ```
 
-You can publish the config file with:
-
-```bash
-php artisan vendor:publish --tag=":package_slug-config"
-```
-
-This is the contents of the published config file:
+Add a log channel for HTTP client logs in `config/logging.php` (e.g. a dedicated file or stack):
 
 ```php
-return [
-];
+'channels' => [
+    // ...
+    'http_client' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/http_client.log'),
+        'level' => 'debug',
+    ],
+],
 ```
 
-Optionally, you can publish the views using
+Set the package to use that channel in `config/http-client-logger.php`:
 
-```bash
-php artisan vendor:publish --tag=":package_slug-views"
+```php
+'channel' => env('HTTP_CLIENT_LOGGER_CHANNEL', 'http_client'),
 ```
+
+## Configuration
+
+After publishing, configure `config/http-client-logger.php` as needed.
+
+| Key | Description | Example |
+|-----|-------------|---------|
+| `enabled` | Master switch for HTTP client logging. When disabled, the `log` macro still exists but no entries are written. | `true` or `env('HTTP_CLIENT_LOGGER_ENABLED', true)` |
+| `channel` | Log channel name (must exist in `config/logging.php`). | `'http_client'` |
+| `report` | Which response status categories to log: `info` (1xx), `success` (2xx), `redirect` (3xx), `client_error` (4xx), `server_error` (5xx). | `'client_error' => true` |
+| `include_response_body` | Whether to include the response body in the log context. | `true` |
+| `include_request_headers` | Request header names (lowercase) to include. Empty array = include all. | `['content-type', 'x-request-id']` |
+| `include_response_headers` | Response header names (lowercase) to include. Empty array = include all. | `['content-type', 'x-request-id']` |
+| `sensitive_fields` | Request/response body keys to replace with `***`. | `['token', 'password', 'refresh_token']` |
+| `sensitive_headers` | Header names (lowercase) to replace with `***`. | `['authorization', 'cookie', 'x-api-key']` |
+| `max_body_length` | Max string length for body values before truncation (with `…`). | `1000` |
+| `message_prefix` | Prefix for the log message (e.g. for filtering in log aggregators). | `'[HttpClientLogger] '` |
 
 ## Usage
 
+Use the `log` macro on the Laravel HTTP client to log that request and its response (or failure).
+
+**Basic:**
+
 ```php
-$:variable = new VendorName\Skeleton();
-echo $:variable->echoPhrase('Hello, VendorName!');
+use Illuminate\Support\Facades\Http;
+
+Http::log()->get('https://api.example.com/users');
+Http::log()->post('https://api.example.com/orders', ['item' => 'widget']);
+```
+
+**With context (e.g. client name in the log message):**
+
+```php
+Http::log(['client' => 'Stripe'])->post('https://api.stripe.com/v1/charges', $payload);
+```
+
+When `enabled` is `false` in config, the macro is still available but the middleware does not write any log entries.
+
+## Example log output
+
+**Message:** `[HttpClientLogger] GET https://api.example.com/users`
+
+**Context (example):**
+
+```php
+[
+    'request_headers' => ['Content-Type' => ['application/json']],
+    'request_body' => ['page' => 1],
+    'response_status' => 200,
+    'response_headers' => ['Content-Type' => ['application/json']],
+    'response_body' => ['data' => [...], 'token' => '***'],
+    'execution_time_ms' => 142,
+]
+```
+
+## Example: log only 4xx/5xx with masked secrets
+
+```php
+// config/http-client-logger.php
+return [
+    'enabled' => true,
+    'channel' => 'http_client',
+    'report' => [
+        'info' => false,
+        'success' => false,
+        'redirect' => false,
+        'client_error' => true,
+        'server_error' => true,
+    ],
+    'include_response_body' => true,
+    'include_request_headers' => ['content-type', 'x-request-id'],
+    'include_response_headers' => ['content-type', 'x-request-id'],
+    'sensitive_fields' => ['token', 'password', 'refresh_token', 'secret', 'api_key'],
+    'sensitive_headers' => ['authorization', 'cookie', 'x-api-key'],
+    'max_body_length' => 1000,
+    'message_prefix' => '[HttpClientLogger] ',
+];
 ```
 
 ## Testing
@@ -75,18 +129,10 @@ composer test
 
 Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
 
-## Contributing
-
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
-
-## Security Vulnerabilities
-
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
-
 ## Credits
 
-- [:author_name](https://github.com/:author_username)
-- [All Contributors](../../contributors)
+- [Serhii Andriichuk](https://github.com/andriichuk)
+- [All Contributors](https://github.com/andriichuk/laravel-http-client-logger/contributors)
 
 ## License
 
