@@ -71,7 +71,7 @@ final readonly class HttpClientLoggerMiddleware
 
         $channel = $config['channel'] ?? 'stack';
         $messagePrefix = $config['message_prefix'] ?? '[HttpClientLogger] ';
-        $clientName = ! empty($context['client']) ? ' (' . $context['client'] . ')' : '';
+        $clientName = ! empty($context['client']) ? ' ('.$context['client'].')' : '';
 
         $requestBody = $this->readStream($request->getBody());
         $requestBodyParsed = $this->parseAndSanitizeBody($requestBody, $config);
@@ -99,7 +99,7 @@ final readonly class HttpClientLoggerMiddleware
         ];
 
         Log::channel($channel)->info(
-            $messagePrefix . $request->getMethod() . ' ' . (string) $request->getUri() . $clientName,
+            $messagePrefix.$request->getMethod().' '.(string) $request->getUri().$clientName,
             $logContext
         );
     }
@@ -117,7 +117,7 @@ final readonly class HttpClientLoggerMiddleware
 
         $channel = $config['channel'] ?? 'stack';
         $messagePrefix = $config['message_prefix'] ?? '[HttpClientLogger] ';
-        $clientName = ! empty($context['client']) ? ' (' . $context['client'] . ')' : '';
+        $clientName = ! empty($context['client']) ? ' ('.$context['client'].')' : '';
 
         $handlerContext = method_exists($throwable, 'getHandlerContext')
             ? /** @var array{errno?: int, error?: string} */ ($throwable->getHandlerContext() ?? [])
@@ -129,7 +129,7 @@ final readonly class HttpClientLoggerMiddleware
         $requestHeaders = $this->filterHeaders($request->getHeaders(), $includeRequestHeaders, $config['sensitive_headers'] ?? []);
 
         Log::channel($channel)->error(
-            $messagePrefix . 'Request failed: ' . $request->getMethod() . ' ' . (string) $request->getUri() . $clientName . ' — ' . $throwable->getMessage(),
+            $messagePrefix.'Request failed: '.$request->getMethod().' '.(string) $request->getUri().$clientName.' — '.$throwable->getMessage(),
             [
                 'request_headers' => $requestHeaders,
                 'request_body' => $requestBodyParsed,
@@ -142,7 +142,7 @@ final readonly class HttpClientLoggerMiddleware
     }
 
     /**
-     * @param array<string, mixed> $report
+     * @param  array<string, mixed>  $report
      */
     private function shouldLogStatus(int $status, array $report): bool
     {
@@ -162,9 +162,9 @@ final readonly class HttpClientLoggerMiddleware
     }
 
     /**
-     * @param array<string, array<int, string>> $headers
-     * @param list<string> $include
-     * @param list<string> $sensitive
+     * @param  array<string, array<int, string>>  $headers
+     * @param  list<string>  $include
+     * @param  list<string>  $sensitive
      * @return array<string, array<int, string>>
      */
     private function filterHeaders(array $headers, array $include, array $sensitive): array
@@ -196,7 +196,7 @@ final readonly class HttpClientLoggerMiddleware
     }
 
     /**
-     * @param array<string, mixed> $config
+     * @param  array<string, mixed>  $config
      * @return array<string, mixed>|string
      */
     private function parseAndSanitizeBody(string $raw, array $config): array|string
@@ -208,15 +208,15 @@ final readonly class HttpClientLoggerMiddleware
 
         $maxLength = (int) ($config['max_body_length'] ?? 1000);
         if (mb_strlen($raw) > $maxLength) {
-            return mb_substr($raw, 0, $maxLength) . '…';
+            return mb_substr($raw, 0, $maxLength).'…';
         }
 
         return $raw;
     }
 
     /**
-     * @param array<string, mixed> $data
-     * @param array<string, mixed> $config
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $config
      * @return array<string, mixed>
      */
     private function sanitize(array $data, array $config): array
@@ -227,11 +227,12 @@ final readonly class HttpClientLoggerMiddleware
         foreach ($data as $key => $value) {
             if (in_array($key, $sensitive, true)) {
                 $data[$key] = '***';
+
                 continue;
             }
             if (is_string($value)) {
                 $data[$key] = mb_strlen($value) > $maxLength
-                    ? mb_substr($value, 0, $maxLength) . '…'
+                    ? mb_substr($value, 0, $maxLength).'…'
                     : $value;
             } elseif (is_array($value)) {
                 $data[$key] = $this->sanitize($value, $config);
