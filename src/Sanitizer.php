@@ -33,6 +33,7 @@ final readonly class Sanitizer
     public function sanitize(array $data, ?array $sensitiveFields = null, ?int $maxLength = null): array
     {
         $sensitive = $sensitiveFields ?? self::DEFAULT_SENSITIVE_KEYS;
+        $maxLen = $maxLength ?? self::DEFAULT_MAX_LENGTH;
 
         foreach ($data as $key => $value) {
             if (in_array($key, $sensitive, true)) {
@@ -42,7 +43,7 @@ final readonly class Sanitizer
             }
 
             if (is_string($value)) {
-                $data[$key] = $maxLength !== null && mb_strlen($value) > $maxLength
+                $data[$key] = mb_strlen($value) > $maxLen
                     ? mb_substr($value, 0, $maxLength).'…'
                     : $value;
             } elseif (is_object($value)) {

@@ -231,7 +231,7 @@ final readonly class HttpClientLoggerMiddleware
         if (! preg_match('/boundary=(?:"([^"]+)"|([^\s;]+))/i', $contentType, $m)) {
             return [];
         }
-        $boundary = trim($m[1] ?? $m[2], '"');
+        $boundary = trim($m[1] !== '' ? $m[1] : $m[2], '"');
 
         $stream = $request->getBody();
         if (! $stream->isSeekable()) {
@@ -312,7 +312,7 @@ final readonly class HttpClientLoggerMiddleware
 
         foreach ($headers as $name => $values) {
             $nameLower = strtolower($name);
-            if ($include !== [] && ! in_array('*', $include, true) && ! in_array($nameLower, $include, true)) {
+            if (! in_array('*', $include, true) && ! in_array($nameLower, $include, true)) {
                 continue;
             }
             $result[$name] = in_array($nameLower, $sensitiveLower, true) ? ['***'] : $values;
@@ -357,7 +357,7 @@ final readonly class HttpClientLoggerMiddleware
 
         $maxLength = $this->maxStringLength($config);
 
-        if ($maxLength !== null && mb_strlen($raw) > $maxLength) {
+        if (mb_strlen($raw) > $maxLength) {
             return mb_substr($raw, 0, $maxLength).'…';
         }
 
@@ -367,11 +367,15 @@ final readonly class HttpClientLoggerMiddleware
     /**
      * @param  array<string, mixed>  $config
      */
-    private function maxStringLength(array $config): ?int
+    private function maxStringLength(array $config): int
     {
         $v = $config['max_string_value_length'] ?? $config['max_body_length'] ?? 1000;
 
-        return $v === null ? null : (int) $v;
+        if (! is_scalar($v) || $v === '') {
+            return PHP_INT_MAX;
+        }
+
+        return (int) $v;
     }
 
     private function readStream(StreamInterface $stream): string
