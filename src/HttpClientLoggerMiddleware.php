@@ -250,7 +250,7 @@ final readonly class HttpClientLoggerMiddleware
             if ($i === 0) {
                 $part = preg_replace('/^.*\r\n/', '', $part);
             }
-            if ($part === '' || $part === "--\r\n" || $part === "-") {
+            if ($part === '' || $part === "--\r\n" || $part === '-') {
                 continue;
             }
             $headerEnd = strpos($part, "\r\n\r\n");
