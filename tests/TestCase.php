@@ -4,6 +4,7 @@ namespace Andriichuk\HttpClientLogger\Tests;
 
 use Andriichuk\HttpClientLogger\HttpClientLoggerServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Monolog\Formatter\LineFormatter;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra
@@ -38,7 +39,7 @@ class TestCase extends Orchestra
             'driver' => 'single',
             'path' => storage_path('logs/http_client_test.log'),
             'level' => 'debug',
-            'formatter' => \Monolog\Formatter\LineFormatter::class,
+            'formatter' => LineFormatter::class,
             'formatter_with' => [
                 'format' => "[%datetime%] %channel%.%level_name%: %message% %context%\n",
                 'dateFormat' => 'Y-m-d H:i:s',
