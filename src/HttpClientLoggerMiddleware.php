@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Andriichuk\HttpClientLogger;
 
 use GuzzleHttp\Promise\PromiseInterface;
+use Illuminate\Container\Attributes\Config;
 use Illuminate\Support\Facades\Log;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -13,16 +14,24 @@ use Throwable;
 
 /**
  * Guzzle middleware that logs outgoing HTTP request/response (or failure) to a Laravel log channel.
- * All behaviour is driven by config('http-client-logger'): channel, report, headers, sanitization, etc.
- * Use via Laravel HTTP client: Http::log()->get(...) or Http::log(['client' => 'Name'])->post(...).
+ * All behaviour is driven by the "http-client-logger" config (injected via constructor).
+ * Use via Laravel HTTP client: Http::log()->get(...) or Http::log(['name' => 'Name'])->post(...).
  */
 final readonly class HttpClientLoggerMiddleware
 {
     /**
+     * @param  array<string, mixed>  $config
+     */
+    public function __construct(
+        #[Config('http-client-logger', [])]
+        private array $config
+    ) {}
+
+    /**
      * Returns a Guzzle middleware callable that logs the request and response (or exception)
      * according to the "http-client-logger" config.
      *
-     * @param  array<string, mixed>  $context  Optional context (e.g. ['client' => 'ApiName']) included in log message
+     * @param  array<string, mixed>  $context  Optional context (e.g. ['name' => 'ApiName']) included in log message
      * @return callable Guzzle middleware function
      */
     public function __invoke(array $context = []): callable
@@ -53,53 +62,72 @@ final readonly class HttpClientLoggerMiddleware
         return round((hrtime(true) - $start) / 1_000_000);
     }
 
+    /**
+     * @param  array<string, mixed>  $context
+     * @return array{channel: string, message_prefix: string, name_in_message: string, request_headers: array, request_body: array|string}
+     */
+    private function prepareRequestLogData(RequestInterface $request, array $context): array
+    {
+        $requestBody = $this->readStream($request->getBody());
+        $requestBodyParsed = $this->parseAndSanitizeBody($requestBody, $this->config, true);
+        $includeRequestHeaders = $this->config['include_request_headers'] ?? [];
+        $requestHeaders = $this->filterHeaders($request->getHeaders(), $includeRequestHeaders, $this->config['sensitive_headers'] ?? []);
+
+        return [
+            'channel' => $this->config['channel'] ?? 'stack',
+            'message_prefix' => $this->config['message_prefix'] ?? '[HttpClientLogger] ',
+            'name_in_message' => ! empty($context['name']) ? $context['name'].' ' : '',
+            'request_headers' => $requestHeaders,
+            'request_body' => $requestBodyParsed,
+        ];
+    }
+
     private function logSuccess(
         RequestInterface $request,
         ResponseInterface $response,
         array $context,
         float $timeMs
     ): void {
-        $config = config('http-client-logger', []);
-        if (! ($config['enabled'] ?? true)) {
+        if (! ($this->config['enabled'] ?? false)) {
             return;
         }
 
         $status = $response->getStatusCode();
-        if (! $this->shouldLogStatus($status, $config['report'] ?? [])) {
+        
+        if (! $this->shouldLogStatus($status, $this->config['report'] ?? [])) {
             return;
         }
 
-        $channel = $config['channel'] ?? 'stack';
-        $messagePrefix = $config['message_prefix'] ?? '[HttpClientLogger] ';
-        $clientName = ! empty($context['client']) ? ' ('.$context['client'].')' : '';
-
-        $requestBody = $this->readStream($request->getBody());
-        $requestBodyParsed = $this->parseAndSanitizeBody($requestBody, $config);
-        $includeRequestHeaders = $config['include_request_headers'] ?? [];
-        $requestHeaders = $this->filterHeaders($request->getHeaders(), $includeRequestHeaders, $config['sensitive_headers'] ?? []);
+        $prepared = $this->prepareRequestLogData($request, $context);
 
         $bodyStream = $response->getBody();
         $responseBodyRaw = $bodyStream->getContents();
         $bodyStream->rewind();
 
-        $responseBody = 'skipped';
-        if ($config['include_response_body'] ?? true) {
-            $responseBody = $this->parseAndSanitizeBody($responseBodyRaw, $config);
+        $responseBody = '[skipped]';
+        
+        if ($this->config['include_response'] ?? $this->config['include_response_body'] ?? true) {
+            $includeNonJson = (bool) ($this->config['include_non_json_response'] ?? false);
+            $responseBody = $this->parseAndSanitizeBody($responseBodyRaw, $this->config, $includeNonJson);
         }
-        $includeResponseHeaders = $config['include_response_headers'] ?? [];
-        $responseHeaders = $this->filterHeaders($this->headersToArray($response->getHeaders()), $includeResponseHeaders, $config['sensitive_headers'] ?? []);
+        
+        $includeResponseHeaders = $this->config['include_response_headers'] ?? [];
+        $responseHeaders = $this->filterHeaders($this->headersToArray($response->getHeaders()), $includeResponseHeaders, $this->config['sensitive_headers'] ?? []);
 
         $logContext = [
-            'request_headers' => $requestHeaders,
-            'request_body' => $requestBodyParsed,
+            'request_headers' => $prepared['request_headers'],
+            'request_body' => $prepared['request_body'],
             'response_status' => $status,
             'response_headers' => $responseHeaders,
             'response_body' => $responseBody,
             'execution_time_ms' => $timeMs,
         ];
 
-        Log::channel($channel)->info(
-            $messagePrefix.$request->getMethod().' '.(string) $request->getUri().$clientName,
+        $logLevel = $this->logLevelForStatus($status, $this->config['log_level_by_status'] ?? []);
+        
+        Log::channel($prepared['channel'])->log(
+            $logLevel,
+            $prepared['message_prefix'].$prepared['name_in_message'].' '. $request->getMethod().' '.(string) $request->getUri(),
             $logContext
         );
     }
@@ -110,35 +138,41 @@ final readonly class HttpClientLoggerMiddleware
         array $context,
         float $timeMs
     ): void {
-        $config = config('http-client-logger', []);
-        if (! ($config['enabled'] ?? true)) {
+        if (! ($this->config['enabled'] ?? false)) {
             return;
         }
 
-        $channel = $config['channel'] ?? 'stack';
-        $messagePrefix = $config['message_prefix'] ?? '[HttpClientLogger] ';
-        $clientName = ! empty($context['client']) ? ' ('.$context['client'].')' : '';
+        $prepared = $this->prepareRequestLogData($request, $context);
 
         $handlerContext = method_exists($throwable, 'getHandlerContext')
             ? /** @var array{errno?: int, error?: string} */ ($throwable->getHandlerContext() ?? [])
             : [];
 
-        $requestBody = $this->readStream($request->getBody());
-        $requestBodyParsed = $this->parseAndSanitizeBody($requestBody, $config);
-        $includeRequestHeaders = $config['include_request_headers'] ?? [];
-        $requestHeaders = $this->filterHeaders($request->getHeaders(), $includeRequestHeaders, $config['sensitive_headers'] ?? []);
+        $errorContext = [
+            'request_headers' => $prepared['request_headers'],
+            'request_body' => $prepared['request_body'],
+            'error_code' => $throwable->getCode(),
+            'errno' => $handlerContext['errno'] ?? null,
+            'error' => $handlerContext['error'] ?? null,
+            'execution_time_ms' => $timeMs,
+        ];
 
-        Log::channel($channel)->error(
-            $messagePrefix.'Request failed: '.$request->getMethod().' '.(string) $request->getUri().$clientName.' — '.$throwable->getMessage(),
-            [
-                'request_headers' => $requestHeaders,
-                'request_body' => $requestBodyParsed,
-                'error_code' => $throwable->getCode(),
-                'errno' => $handlerContext['errno'] ?? null,
-                'error' => $handlerContext['error'] ?? null,
-                'execution_time_ms' => $timeMs,
-            ]
+        Log::channel($prepared['channel'])->error(
+            $prepared['message_prefix'].$prepared['name_in_message'].' Request failed: '.$request->getMethod().' '.(string) $request->getUri().' — '.$throwable->getMessage(),
+            $errorContext
         );
+    }
+
+    private function statusCategory(int $status): string
+    {
+        return match (true) {
+            $status >= 100 && $status < 200 => 'info',
+            $status >= 200 && $status < 300 => 'success',
+            $status >= 300 && $status < 400 => 'redirect',
+            $status >= 400 && $status < 500 => 'client_error',
+            $status >= 500 => 'server_error',
+            default => 'info',
+        };
     }
 
     /**
@@ -149,16 +183,16 @@ final readonly class HttpClientLoggerMiddleware
         if (empty($report)) {
             return true;
         }
-        $category = match (true) {
-            $status >= 100 && $status < 200 => 'info',
-            $status >= 200 && $status < 300 => 'success',
-            $status >= 300 && $status < 400 => 'redirect',
-            $status >= 400 && $status < 500 => 'client_error',
-            $status >= 500 => 'server_error',
-            default => 'info',
-        };
 
-        return (bool) ($report[$category] ?? true);
+        return (bool) ($report[$this->statusCategory($status)] ?? true);
+    }
+
+    /**
+     * @param  array<string, string>  $logLevelByStatus
+     */
+    private function logLevelForStatus(int $status, array $logLevelByStatus): string
+    {
+        return $logLevelByStatus[$this->statusCategory($status)] ?? 'info';
     }
 
     /**
@@ -171,9 +205,10 @@ final readonly class HttpClientLoggerMiddleware
     {
         $sensitiveLower = array_map('strtolower', $sensitive);
         $result = [];
+        
         foreach ($headers as $name => $values) {
             $nameLower = strtolower($name);
-            if ($include !== [] && ! in_array($nameLower, $include, true)) {
+            if ($include !== [] && ! in_array('*', $include, true) && ! in_array($nameLower, $include, true)) {
                 continue;
             }
             $result[$name] = in_array($nameLower, $sensitiveLower, true) ? ['***'] : $values;
@@ -188,6 +223,7 @@ final readonly class HttpClientLoggerMiddleware
     private function headersToArray(array $headers): array
     {
         $out = [];
+        
         foreach ($headers as $name => $values) {
             $out[$name] = is_array($values) ? $values : [$values];
         }
@@ -199,15 +235,25 @@ final readonly class HttpClientLoggerMiddleware
      * @param  array<string, mixed>  $config
      * @return array<string, mixed>|string
      */
-    private function parseAndSanitizeBody(string $raw, array $config): array|string
+    private function parseAndSanitizeBody(string $raw, array $config, bool $includeNonJson = true): array|string
     {
         $decoded = json_decode($raw, true);
+        
         if (is_array($decoded)) {
-            return $this->sanitize($decoded, $config);
+            $sanitizer = new Sanitizer();
+            $sensitive = $config['sensitive_fields'] ?? null;
+            $maxLength = $this->maxStringLength($config);
+
+            return $sanitizer->sanitize($decoded, $sensitive, $maxLength);
         }
 
-        $maxLength = (int) ($config['max_body_length'] ?? 1000);
-        if (mb_strlen($raw) > $maxLength) {
+        if (! $includeNonJson) {
+            return '[skipped]';
+        }
+
+        $maxLength = $this->maxStringLength($config);
+        
+        if ($maxLength !== null && mb_strlen($raw) > $maxLength) {
             return mb_substr($raw, 0, $maxLength).'…';
         }
 
@@ -215,31 +261,13 @@ final readonly class HttpClientLoggerMiddleware
     }
 
     /**
-     * @param  array<string, mixed>  $data
      * @param  array<string, mixed>  $config
-     * @return array<string, mixed>
      */
-    private function sanitize(array $data, array $config): array
+    private function maxStringLength(array $config): ?int
     {
-        $sensitive = $config['sensitive_fields'] ?? ['token', 'password', 'refresh_token'];
-        $maxLength = (int) ($config['max_body_length'] ?? 1000);
+        $v = $config['max_string_value_length'] ?? $config['max_body_length'] ?? 1000;
 
-        foreach ($data as $key => $value) {
-            if (in_array($key, $sensitive, true)) {
-                $data[$key] = '***';
-
-                continue;
-            }
-            if (is_string($value)) {
-                $data[$key] = mb_strlen($value) > $maxLength
-                    ? mb_substr($value, 0, $maxLength).'…'
-                    : $value;
-            } elseif (is_array($value)) {
-                $data[$key] = $this->sanitize($value, $config);
-            }
-        }
-
-        return $data;
+        return $v === null ? null : (int) $v;
     }
 
     private function readStream(StreamInterface $stream): string

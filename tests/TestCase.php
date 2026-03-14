@@ -29,6 +29,9 @@ class TestCase extends Orchestra
         $app['config']->set('database.default', 'testing');
 
         $config = require __DIR__.'/../config/http-client-logger.php';
+        $config['enabled'] = true;
+        // In tests, log 2xx by default so tests that expect success logs work
+        $config['report'] = array_merge($config['report'] ?? [], ['success' => true]);
         $app['config']->set('http-client-logger', $config);
 
         $app['config']->set('logging.channels.http_client', [

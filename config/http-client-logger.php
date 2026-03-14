@@ -4,41 +4,62 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Enable HTTP Client Logging
+    | Log HTTP Client Requests
     |--------------------------------------------------------------------------
     |
-    | When enabled, the package registers the "log" macro on the Laravel HTTP
-    | client. Use Http::log()->get(...) to log that request/response.
+    | This option controls whether HTTP client requests should be logged.
+    | Use LOG_HTTP_CLIENT_REQUESTS in .env to enable or disable explicitly.
+    | When LOG_HTTP_CLIENT_REQUESTS is not set, logging follows APP_DEBUG
+    | (enabled in debug mode, disabled in production).
     |
     */
-    'enabled' => env('HTTP_CLIENT_LOGGER_ENABLED', true),
+    'enabled' => env('LOG_HTTP_CLIENT_REQUESTS', (bool) env('APP_DEBUG', false)),
 
     /*
     |--------------------------------------------------------------------------
     | Log Channel
     |--------------------------------------------------------------------------
     |
-    | The log channel to use for HTTP client request/response logs. Must exist
-    | in config/logging.php (e.g. 'http', 'stack', 'single').
+    | The log channel to use. Ensure this channel exists in config/logging.php.
+    | Defaults to HTTP_CLIENT_LOG_CHANNEL, or LOG_CHANNEL, or "stack" if unset.
     |
     */
-    'channel' => env('HTTP_CLIENT_LOGGER_CHANNEL', 'stack'),
+    'channel' => env('HTTP_CLIENT_LOG_CHANNEL', env('LOG_CHANNEL', 'stack')),
 
     /*
     |--------------------------------------------------------------------------
-    | Which Response Statuses to Log
+    | Report by Status
     |--------------------------------------------------------------------------
     |
-    | Control which HTTP status categories are logged for successful responses.
-    | Exceptions (network errors, timeouts) are always logged when they occur.
+    | Which response status codes to log: 1xx info, 2xx success, 3xx redirect,
+    | 4xx client_error, 5xx server_error. Set to true to log that category.
     |
     */
     'report' => [
-        'info' => true,         // 1xx
-        'success' => true,      // 2xx
-        'redirect' => true,     // 3xx
-        'client_error' => true, // 4xx
-        'server_error' => true, // 5xx
+        'info' => false,
+        'success' => false,
+        'redirect' => true,
+        'client_error' => true,
+        'server_error' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Log Level by Response Status
+    |--------------------------------------------------------------------------
+    |
+    | Map each response status category to a PSR log level. Used so 4xx/5xx
+    | can be logged as warning/error for easier filtering. Keys match 'report':
+    | info, success, redirect, client_error, server_error. Levels: debug, info,
+    | notice, warning, error, critical, alert, emergency.
+    |
+    */
+    'log_level_by_status' => [
+        'info' => 'info',
+        'success' => 'info',
+        'redirect' => 'info',
+        'client_error' => 'warning',
+        'server_error' => 'error',
     ],
 
     /*
@@ -46,27 +67,43 @@ return [
     | Include Response Body
     |--------------------------------------------------------------------------
     |
-    | Whether to include the response body in the log context.
+    | When true, the response body is decoded and sanitized (for JSON) and
+    | included in the log context.
     |
     */
-    'include_response_body' => true,
+    'include_response' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Include Non-JSON Response Body (HTML, text, etc.)
+    |--------------------------------------------------------------------------
+    |
+    | When include_response is true, JSON responses are always decoded and
+    | sanitized. When this option is true, non-JSON responses (e.g. HTML or
+    | plain text) are also included in the log (truncated by max_string_value_length).
+    | Default false logs non-JSON response body as '[skipped]'.
+    |
+    */
+    'include_non_json_response' => false,
 
     /*
     |--------------------------------------------------------------------------
     | Request Headers to Include
     |--------------------------------------------------------------------------
     |
-    | Header names (lowercase) to include in logs. Empty array = include all.
+    | Header names (lowercase) to include in the log context for the request.
+    | Use ['*'] to include all request headers.
     |
     */
-    'include_request_headers' => [],
+    'include_request_headers' => ['*'],
 
     /*
     |--------------------------------------------------------------------------
     | Response Headers to Include
     |--------------------------------------------------------------------------
     |
-    | Header names (lowercase) to include in logs. Empty array = include all.
+    | Header names (lowercase) to include in the log context for the response.
+    | Use ['*'] to include all response headers.
     |
     */
     'include_response_headers' => [],
@@ -76,16 +113,17 @@ return [
     | Sensitive Body Fields
     |--------------------------------------------------------------------------
     |
-    | Request/response body keys to replace with "***" in logs.
+    | Request/response body keys to replace with *** in logs (e.g. token, password).
     |
     */
     'sensitive_fields' => [
         'token',
-        'password',
+        '_token',
         'refresh_token',
-        'secret',
+        'password',
+        'confirm_password',
+        'access_token',
         'api_key',
-        'authorization',
     ],
 
     /*
@@ -93,24 +131,26 @@ return [
     | Sensitive Headers
     |--------------------------------------------------------------------------
     |
-    | Header names (lowercase) to replace with "***" in logs.
+    | Header names (lowercase) to replace with *** in logs (e.g. authorization, cookie).
     |
     */
     'sensitive_headers' => [
         'authorization',
         'cookie',
-        'x-api-key',
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Max Body Length
+    | Max String Value Length
     |--------------------------------------------------------------------------
     |
-    | Maximum string length for body values before truncation (with "…").
+    | Maximum length for string values in request/response bodies before
+    | truncation (ellipsis added). Also used to truncate non-JSON response
+    | bodies (e.g. HTML or plain text) when logged. Set to null to disable
+    | truncation (log full length).
     |
     */
-    'max_body_length' => 1000,
+    'max_string_value_length' => 100,
 
     /*
     |--------------------------------------------------------------------------
