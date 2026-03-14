@@ -27,7 +27,7 @@
         "source": "https://github.com/andriichuk/laravel-http-client-logger"
     },
     "require": {
-        "php": "^8.4",
+        "php": "^8.3",
         "guzzlehttp/guzzle": "^7.0",
         "illuminate/http": "^11.0||^12.0",
         "illuminate/support": "^11.0||^12.0",
