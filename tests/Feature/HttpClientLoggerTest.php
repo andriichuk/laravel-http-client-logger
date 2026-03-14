@@ -121,6 +121,13 @@ test('log_level_by_status: 4xx is logged at warning level and 5xx at error level
         'client_error' => true,
         'server_error' => true,
     ]);
+    config()->set('http-client-logger.log_level_by_status', [
+        'info' => 'info',
+        'success' => 'info',
+        'redirect' => 'info',
+        'client_error' => 'warning',
+        'server_error' => 'error',
+    ]);
 
     Http::fake([
         'https://api.test/client' => Http::response('forbidden', 403),
