@@ -15,7 +15,7 @@ class HttpClientLoggerServiceProvider extends PackageServiceProvider
             ->hasConfigFile();
     }
 
-    public function boot(): void
+    public function bootingPackage(): void
     {
         PendingRequest::macro('name', function (string $name): PendingRequest {
             /** @var PendingRequest $this */

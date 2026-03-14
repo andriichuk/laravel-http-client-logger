@@ -25,7 +25,7 @@ composer require andriichuk/laravel-http-client-logger
 Publish the config file:
 
 ```bash
-php artisan vendor:publish --tag="laravel-http-client-logger-config"
+php artisan vendor:publish --tag="http-client-logger-config"
 ```
 
 (Optional) Add a dedicated log channel for HTTP client logs in `config/logging.php` (e.g. a separate file or stack). If you skip this, the package uses your default log channel.
