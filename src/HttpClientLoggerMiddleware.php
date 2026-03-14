@@ -93,7 +93,7 @@ final readonly class HttpClientLoggerMiddleware
         }
 
         $status = $response->getStatusCode();
-        
+
         if (! $this->shouldLogStatus($status, $this->config['report'] ?? [])) {
             return;
         }
@@ -105,12 +105,12 @@ final readonly class HttpClientLoggerMiddleware
         $bodyStream->rewind();
 
         $responseBody = '[skipped]';
-        
+
         if ($this->config['include_response'] ?? $this->config['include_response_body'] ?? true) {
             $includeNonJson = (bool) ($this->config['include_non_json_response'] ?? false);
             $responseBody = $this->parseAndSanitizeBody($responseBodyRaw, $this->config, $includeNonJson);
         }
-        
+
         $includeResponseHeaders = $this->config['include_response_headers'] ?? [];
         $responseHeaders = $this->filterHeaders($this->headersToArray($response->getHeaders()), $includeResponseHeaders, $this->config['sensitive_headers'] ?? []);
 
@@ -124,10 +124,10 @@ final readonly class HttpClientLoggerMiddleware
         ];
 
         $logLevel = $this->logLevelForStatus($status, $this->config['log_level_by_status'] ?? []);
-        
+
         Log::channel($prepared['channel'])->log(
             $logLevel,
-            $prepared['message_prefix'].$prepared['name_in_message'].' '. $request->getMethod().' '.(string) $request->getUri(),
+            $prepared['message_prefix'].$prepared['name_in_message'].' '.$request->getMethod().' '.(string) $request->getUri(),
             $logContext
         );
     }
@@ -205,7 +205,7 @@ final readonly class HttpClientLoggerMiddleware
     {
         $sensitiveLower = array_map('strtolower', $sensitive);
         $result = [];
-        
+
         foreach ($headers as $name => $values) {
             $nameLower = strtolower($name);
             if ($include !== [] && ! in_array('*', $include, true) && ! in_array($nameLower, $include, true)) {
@@ -223,7 +223,7 @@ final readonly class HttpClientLoggerMiddleware
     private function headersToArray(array $headers): array
     {
         $out = [];
-        
+
         foreach ($headers as $name => $values) {
             $out[$name] = is_array($values) ? $values : [$values];
         }
@@ -238,9 +238,9 @@ final readonly class HttpClientLoggerMiddleware
     private function parseAndSanitizeBody(string $raw, array $config, bool $includeNonJson = true): array|string
     {
         $decoded = json_decode($raw, true);
-        
+
         if (is_array($decoded)) {
-            $sanitizer = new Sanitizer();
+            $sanitizer = new Sanitizer;
             $sensitive = $config['sensitive_fields'] ?? null;
             $maxLength = $this->maxStringLength($config);
 
@@ -252,7 +252,7 @@ final readonly class HttpClientLoggerMiddleware
         }
 
         $maxLength = $this->maxStringLength($config);
-        
+
         if ($maxLength !== null && mb_strlen($raw) > $maxLength) {
             return mb_substr($raw, 0, $maxLength).'…';
         }
