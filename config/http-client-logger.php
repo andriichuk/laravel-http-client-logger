@@ -92,7 +92,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Header names (lowercase) to include in the log context for the request.
-    | Use ['*'] to include all request headers.
+    | Use ['*'] to include all request headers. When empty, no request headers
+    | are added to the log at all.
     |
     */
     'include_request_headers' => ['*'],
@@ -103,10 +104,24 @@ return [
     |--------------------------------------------------------------------------
     |
     | Header names (lowercase) to include in the log context for the response.
-    | Use ['*'] to include all response headers.
+    | Use ['*'] to include all response headers. When empty, no response
+    | headers are added to the log at all.
     |
     */
-    'include_response_headers' => [],
+    'include_response_headers' => ['*'],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Include Request Files Metadata (multipart)
+    |--------------------------------------------------------------------------
+    |
+    | When true, multipart requests that send files (e.g. via attach()) will
+    | include file metadata in the log context as "uploaded_files": name,
+    | original_name, size, mime_type, extension, error. No file contents are
+    | logged. Aligns with laravel-http-logger's include_uploaded_files_metadata.
+    |
+    */
+    'include_uploaded_files_metadata' => true,
 
     /*
     |--------------------------------------------------------------------------

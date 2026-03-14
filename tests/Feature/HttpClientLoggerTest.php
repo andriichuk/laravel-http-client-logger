@@ -24,11 +24,11 @@ test('middleware logs success: one log entry with method, URL and context', func
     expect($log)->toContain('GET')
         ->and($log)->toContain('https://example.com/foo')
         ->and($log)->toContain('request_headers')
-        ->and($log)->toContain('request_body')
-        ->and($log)->toContain('response_status')
-        ->and($log)->toContain('"response_status":200')
+        ->and($log)->toContain('"request_body"')
+        ->and($log)->toContain('response_status_code')
+        ->and($log)->toContain('"response_status_code":200')
         ->and($log)->toContain('response_headers')
-        ->and($log)->toContain('response_body')
+        ->and($log)->toContain('"response_body"')
         ->and($log)->toContain('execution_time_ms');
 });
 
@@ -109,8 +109,8 @@ test('report filter: only enabled status categories are logged', function (): vo
     Http::log()->get('https://example.com/err');
 
     $log = $this->getLogContent();
-    expect($log)->toContain('"response_status":200')
-        ->and($log)->not->toContain('"response_status":404');
+    expect($log)->toContain('"response_status_code":200')
+        ->and($log)->not->toContain('"response_status_code":404');
 });
 
 test('log_level_by_status: 4xx is logged at warning level and 5xx at error level', function (): void {
@@ -137,13 +137,13 @@ test('log_level_by_status: 4xx is logged at warning level and 5xx at error level
     Http::log()->get('https://api.test/client');
     $log = $this->getLogContent();
     expect($log)->toContain('.WARNING:')
-        ->and($log)->toContain('"response_status":403');
+        ->and($log)->toContain('"response_status_code":403');
 
     $this->clearLog();
     Http::log()->get('https://api.test/server');
     $log = $this->getLogContent();
     expect($log)->toContain('.ERROR:')
-        ->and($log)->toContain('"response_status":500');
+        ->and($log)->toContain('"response_status_code":500');
 });
 
 test('sensitive fields are masked in log context', function (): void {
@@ -172,7 +172,7 @@ test('sensitive headers are masked in log context', function (): void {
     expect($log)->toContain('"Authorization":["***"]');
 });
 
-test('include_response false sets response_body to skipped', function (): void {
+test('include_response false sets response to skipped', function (): void {
     config()->set('http-client-logger.include_response', false);
 
     Http::fake(['*' => Http::response('sensitive', 200)]);
@@ -183,7 +183,7 @@ test('include_response false sets response_body to skipped', function (): void {
     expect($log)->toContain('"response_body":"[skipped]"');
 });
 
-test('include_response_body false sets response_body to skipped (backward compatibility)', function (): void {
+test('include_response_body false sets response to skipped (backward compatibility)', function (): void {
     config()->set('http-client-logger.include_response_body', false);
 
     Http::fake(['*' => Http::response('sensitive', 200)]);
@@ -273,6 +273,25 @@ test('include_response_headers [*] includes all response headers', function (): 
         ->and($log)->toContain('100');
 });
 
+test('empty include_request_headers and include_response_headers omit headers from log', function (): void {
+    config()->set('http-client-logger.include_request_headers', []);
+    config()->set('http-client-logger.include_response_headers', []);
+
+    Http::fake([
+        '*' => Http::response('ok', 200, ['X-Request-Id' => 'abc']),
+    ]);
+
+    Http::log()
+        ->withHeaders(['X-Custom' => 'value'])
+        ->get('https://api.test/foo');
+
+    $log = $this->getLogContent();
+    expect($log)->not->toContain('"request_headers"')
+        ->and($log)->not->toContain('"response_headers"')
+        ->and($log)->toContain('"request_body"')
+        ->and($log)->toContain('"response_status_code"');
+});
+
 test('max_string_value_length truncates long body with ellipsis', function (): void {
     config()->set('http-client-logger.max_string_value_length', 5);
 
@@ -327,7 +346,7 @@ test('name macro adds name to log message after prefix', function (): void {
     Http::name('Stripe')->log()->get('https://api.test/balance');
 
     $log = $this->getLogContent();
-    expect($log)->toContain('[HttpClientLogger] Stripe  GET')
+    expect($log)->toContain('[HttpClientLogger] Stripe GET')
         ->and($log)->toContain('https://api.test/balance')
         ->and($log)->not->toContain('"name":"Stripe"');
 });
@@ -336,4 +355,30 @@ test('log macro is registered on PendingRequest when package is loaded', functio
     Http::fake(['*' => Http::response('ok', 200)]);
     $response = Http::log()->get('https://example.com');
     expect($response->successful())->toBeTrue();
+});
+
+test('multipart request with attach() includes uploaded_files metadata in log context', function (): void {
+    config()->set('http-client-logger.report', ['success' => true] + array_fill_keys(['info', 'redirect', 'client_error', 'server_error'], false));
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    Http::log()
+        ->attach('document', 'file content here', 'report.pdf')
+        ->post('https://api.test/upload');
+
+    $log = $this->getLogContent();
+    expect($log)->toContain('uploaded_files')
+        ->and($log)->toContain('"name":"document"')
+        ->and($log)->toContain('"original_name":"report.pdf"')
+        ->and($log)->toContain('"extension":"pdf"');
+});
+
+test('include_uploaded_files_metadata false omits uploaded_files from log context', function (): void {
+    config()->set('http-client-logger.include_uploaded_files_metadata', false);
+    config()->set('http-client-logger.report', ['success' => true] + array_fill_keys(['info', 'redirect', 'client_error', 'server_error'], false));
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    Http::log()->attach('file', 'data', 'x.txt')->post('https://api.test/upload');
+
+    $log = $this->getLogContent();
+    expect($log)->not->toContain('uploaded_files');
 });

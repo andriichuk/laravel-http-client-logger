@@ -39,17 +39,18 @@ final readonly class HttpClientLoggerMiddleware
         return function (callable $handler) use ($context): callable {
             return function (RequestInterface $request, array $options) use ($context, $handler): PromiseInterface {
                 $start = hrtime(true);
+                $requestFilesMeta = $this->extractMultipartFilesMetadataFromRequest($request);
 
                 return $handler($request, $options)->then(
-                    function (ResponseInterface $response) use ($context, $request, $start): ResponseInterface {
+                    function (ResponseInterface $response) use ($context, $request, $start, $requestFilesMeta): ResponseInterface {
                         $timeMs = $this->captureTiming($start);
-                        $this->logSuccess($request, $response, $context, $timeMs);
+                        $this->logSuccess($request, $response, $context, $requestFilesMeta, $timeMs);
 
                         return $response;
                     }
-                )->otherwise(function (Throwable $throwable) use ($request, $context, $start): never {
+                )->otherwise(function (Throwable $throwable) use ($request, $context, $start, $requestFilesMeta): never {
                     $timeMs = $this->captureTiming($start);
-                    $this->logException($request, $throwable, $context, $timeMs);
+                    $this->logException($request, $throwable, $context, $requestFilesMeta, $timeMs);
 
                     throw $throwable;
                 });
@@ -86,6 +87,7 @@ final readonly class HttpClientLoggerMiddleware
         RequestInterface $request,
         ResponseInterface $response,
         array $context,
+        array $requestFilesMeta,
         float $timeMs
     ): void {
         if (! ($this->config['enabled'] ?? false)) {
@@ -111,23 +113,33 @@ final readonly class HttpClientLoggerMiddleware
             $responseBody = $this->parseAndSanitizeBody($responseBodyRaw, $this->config, $includeNonJson);
         }
 
+        $includeRequestHeaders = $this->config['include_request_headers'] ?? [];
         $includeResponseHeaders = $this->config['include_response_headers'] ?? [];
         $responseHeaders = $this->filterHeaders($this->headersToArray($response->getHeaders()), $includeResponseHeaders, $this->config['sensitive_headers'] ?? []);
 
         $logContext = [
-            'request_headers' => $prepared['request_headers'],
             'request_body' => $prepared['request_body'],
-            'response_status' => $status,
-            'response_headers' => $responseHeaders,
+            'response_status_code' => $status,
             'response_body' => $responseBody,
             'execution_time_ms' => $timeMs,
         ];
+
+        if ($includeRequestHeaders !== []) {
+            $logContext['request_headers'] = $prepared['request_headers'];
+        }
+        if ($includeResponseHeaders !== []) {
+            $logContext['response_headers'] = $responseHeaders;
+        }
+
+        if (($this->config['include_uploaded_files_metadata'] ?? true) && $requestFilesMeta !== []) {
+            $logContext['uploaded_files'] = $requestFilesMeta;
+        }
 
         $logLevel = $this->logLevelForStatus($status, $this->config['log_level_by_status'] ?? []);
 
         Log::channel($prepared['channel'])->log(
             $logLevel,
-            $prepared['message_prefix'].$prepared['name_in_message'].' '.$request->getMethod().' '.(string) $request->getUri(),
+            $prepared['message_prefix'].$prepared['name_in_message'].($prepared['name_in_message'] !== '' ? '' : ' ').$request->getMethod().' '.(string) $request->getUri(),
             $logContext
         );
     }
@@ -136,6 +148,7 @@ final readonly class HttpClientLoggerMiddleware
         RequestInterface $request,
         Throwable $throwable,
         array $context,
+        array $requestFilesMeta,
         float $timeMs
     ): void {
         if (! ($this->config['enabled'] ?? false)) {
@@ -143,13 +156,13 @@ final readonly class HttpClientLoggerMiddleware
         }
 
         $prepared = $this->prepareRequestLogData($request, $context);
+        $includeRequestHeaders = $this->config['include_request_headers'] ?? [];
 
         $handlerContext = method_exists($throwable, 'getHandlerContext')
             ? /** @var array{errno?: int, error?: string} */ ($throwable->getHandlerContext() ?? [])
             : [];
 
         $errorContext = [
-            'request_headers' => $prepared['request_headers'],
             'request_body' => $prepared['request_body'],
             'error_code' => $throwable->getCode(),
             'errno' => $handlerContext['errno'] ?? null,
@@ -157,8 +170,15 @@ final readonly class HttpClientLoggerMiddleware
             'execution_time_ms' => $timeMs,
         ];
 
+        if ($includeRequestHeaders !== []) {
+            $errorContext['request_headers'] = $prepared['request_headers'];
+        }
+        if (($this->config['include_uploaded_files_metadata'] ?? true) && $requestFilesMeta !== []) {
+            $errorContext['uploaded_files'] = $requestFilesMeta;
+        }
+
         Log::channel($prepared['channel'])->error(
-            $prepared['message_prefix'].$prepared['name_in_message'].' Request failed: '.$request->getMethod().' '.(string) $request->getUri().' — '.$throwable->getMessage(),
+            $prepared['message_prefix'].$prepared['name_in_message'].($prepared['name_in_message'] !== '' ? '' : ' ').'Request failed: '.$request->getMethod().' '.(string) $request->getUri().' — '.$throwable->getMessage(),
             $errorContext
         );
     }
@@ -196,6 +216,86 @@ final readonly class HttpClientLoggerMiddleware
     }
 
     /**
+     * Extract file metadata from a multipart/form-data request body by parsing part headers.
+     * No file contents are read; stream is rewound after parsing. Matches laravel-http-logger structure.
+     *
+     * @return array<int, array{name: string, original_name: string, size: int|null, mime_type: string|null, extension: string|null, error: int}>
+     */
+    private function extractMultipartFilesMetadataFromRequest(RequestInterface $request): array
+    {
+        $contentType = $request->getHeaderLine('Content-Type');
+        if (! str_contains(strtolower($contentType), 'multipart/form-data')) {
+            return [];
+        }
+
+        if (! preg_match('/boundary=(?:"([^"]+)"|([^\s;]+))/i', $contentType, $m)) {
+            return [];
+        }
+        $boundary = trim($m[1] ?? $m[2], '"');
+
+        $stream = $request->getBody();
+        if (! $stream->isSeekable()) {
+            return [];
+        }
+
+        $pos = $stream->tell();
+        $stream->rewind();
+        $raw = $stream->getContents();
+        $stream->seek($pos);
+
+        $meta = [];
+        $delim = "\r\n--".$boundary;
+        $parts = $delim !== "\r\n--" ? explode($delim, $raw) : [$raw];
+        foreach ($parts as $i => $part) {
+            if ($i === 0) {
+                $part = preg_replace('/^.*\r\n/', '', $part);
+            }
+            if ($part === '' || $part === "--\r\n" || $part === "-") {
+                continue;
+            }
+            $headerEnd = strpos($part, "\r\n\r\n");
+            if ($headerEnd === false) {
+                continue;
+            }
+            $headers = substr($part, 0, $headerEnd);
+            $contentDisposition = null;
+            $contentTypePart = null;
+            foreach (explode("\r\n", $headers) as $line) {
+                if (stripos($line, 'Content-Disposition:') === 0) {
+                    $contentDisposition = $line;
+                }
+                if (stripos($line, 'Content-Type:') === 0) {
+                    $contentTypePart = trim(substr($line, 12));
+                }
+            }
+            if ($contentDisposition === null || ! preg_match('/name\s*=\s*"([^"]+)"/', $contentDisposition, $nameM)) {
+                continue;
+            }
+            $name = $nameM[1];
+            $filename = null;
+            if (preg_match('/filename\s*=\s*"([^"]*)"/', $contentDisposition, $fnM)) {
+                $filename = $fnM[1];
+            } elseif (preg_match("/filename\s*=\s*'([^']*)'/", $contentDisposition, $fnM)) {
+                $filename = $fnM[1];
+            }
+            if ($filename === null || $filename === '') {
+                continue;
+            }
+            $extension = pathinfo($filename, PATHINFO_EXTENSION);
+            $meta[] = [
+                'name' => $name,
+                'original_name' => $filename,
+                'size' => null,
+                'mime_type' => $contentTypePart ?: null,
+                'extension' => $extension !== '' ? $extension : null,
+                'error' => 0,
+            ];
+        }
+
+        return $meta;
+    }
+
+    /**
      * @param  array<string, array<int, string>>  $headers
      * @param  list<string>  $include
      * @param  list<string>  $sensitive
@@ -203,6 +303,10 @@ final readonly class HttpClientLoggerMiddleware
      */
     private function filterHeaders(array $headers, array $include, array $sensitive): array
     {
+        if ($include === []) {
+            return [];
+        }
+
         $sensitiveLower = array_map('strtolower', $sensitive);
         $result = [];
 
