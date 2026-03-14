@@ -19,7 +19,7 @@ class HttpClientLoggerServiceProvider extends PackageServiceProvider
     {
         PendingRequest::macro('name', function (string $name): PendingRequest {
             /** @var PendingRequest $this */
-            return $this->withOptions(array_merge($this->options ?? [], ['laravel_http_client_logger_name' => $name]));
+            return $this->withOptions(['laravel_http_client_logger_name' => $name]);
         });
 
         PendingRequest::macro('log', function (array $context = []): PendingRequest {
