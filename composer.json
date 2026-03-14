@@ -48,7 +48,6 @@
     "autoload": {
         "psr-4": {
             "Andriichuk\\HttpClientLogger\\": "src/",
-            "Andriichuk\\HttpClientLogger\\Database\\Factories\\": "database/factories/"
         }
     },
     "autoload-dev": {
