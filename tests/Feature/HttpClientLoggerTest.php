@@ -138,14 +138,11 @@ test('log_level_by_status: 4xx is logged at warning level and 5xx at error level
     ]);
 
     Http::log()->get('https://api.test/client');
-    $log = $this->getLogContent();
-    expect($log)->toContain('.WARNING:')
-        ->and($log)->toContain('"response_status_code":403');
-
-    $this->clearLog();
     Http::log()->get('https://api.test/server');
     $log = $this->getLogContent();
-    expect($log)->toContain('.ERROR:')
+    expect($log)->toContain('.WARNING:')
+        ->and($log)->toContain('"response_status_code":403')
+        ->and($log)->toContain('.ERROR:')
         ->and($log)->toContain('"response_status_code":500');
 });
 
