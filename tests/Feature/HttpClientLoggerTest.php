@@ -449,9 +449,9 @@ test('callback exception bubbles up', function (): void {
     Http::fake(['*' => Http::response('ok', 200)]);
 
     HttpClientLogger::addCallback(function (): void {
-        throw new \RuntimeException('Callback error');
+        throw new RuntimeException('Callback error');
     });
 
     expect(fn () => Http::log()->get('https://example.com/throw'))
-        ->toThrow(\RuntimeException::class, 'Callback error');
+        ->toThrow(RuntimeException::class, 'Callback error');
 });
