@@ -4,7 +4,11 @@ namespace Andriichuk\HttpClientLogger\Tests;
 
 use Andriichuk\HttpClientLogger\HttpClientLoggerServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Log\Logger;
+use Illuminate\Support\Facades\Log;
 use Monolog\Formatter\LineFormatter;
+use Monolog\Handler\TestHandler;
+use Monolog\Logger as MonologLogger;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra
@@ -35,9 +39,10 @@ class TestCase extends Orchestra
         $config['report'] = array_merge($config['report'] ?? [], ['success' => true]);
         $app['config']->set('http-client-logger', $config);
 
+        // In-memory handler: avoids file permission/locking issues on Windows CI (vendor storage, temp, workspace).
         $app['config']->set('logging.channels.http_client', [
-            'driver' => 'single',
-            'path' => $this->httpClientTestLogPath(),
+            'driver' => 'monolog',
+            'handler' => TestHandler::class,
             'level' => 'debug',
             'formatter' => LineFormatter::class,
             'formatter_with' => [
@@ -47,30 +52,38 @@ class TestCase extends Orchestra
         ]);
     }
 
-    protected function httpClientTestLogPath(): string
-    {
-        // Testbench's storage_path() points under vendor/ (not writable on Windows CI). sys_get_temp_dir()
-        // can also fail there (short paths, locking). Use the package workspace, which is always writable.
-        $dir = dirname(__DIR__).DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'logs';
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, true);
-        }
-
-        return $dir.DIRECTORY_SEPARATOR.'http_client_test.log';
-    }
-
     protected function getLogContent(): string
     {
-        $path = $this->httpClientTestLogPath();
+        /** @var Logger $channel */
+        $channel = Log::channel('http_client');
+        /** @var MonologLogger $monolog */
+        $monolog = $channel->getLogger();
+        foreach ($monolog->getHandlers() as $handler) {
+            if ($handler instanceof TestHandler) {
+                $out = '';
+                foreach ($handler->getRecords() as $record) {
+                    $out .= $record->formatted ?? '';
+                }
 
-        return file_exists($path) ? file_get_contents($path) : '';
+                return $out;
+            }
+        }
+
+        return '';
     }
 
     protected function clearLog(): void
     {
-        $path = $this->httpClientTestLogPath();
-        if (file_exists($path)) {
-            @unlink($path);
+        /** @var Logger $channel */
+        $channel = Log::channel('http_client');
+        /** @var MonologLogger $monolog */
+        $monolog = $channel->getLogger();
+        foreach ($monolog->getHandlers() as $handler) {
+            if ($handler instanceof TestHandler) {
+                $handler->clear();
+
+                return;
+            }
         }
     }
 }

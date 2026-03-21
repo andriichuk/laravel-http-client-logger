@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '**.php'
+      - 'pint.json'
 
 permissions:
   contents: write
