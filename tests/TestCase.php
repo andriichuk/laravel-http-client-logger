@@ -37,7 +37,7 @@ class TestCase extends Orchestra
 
         $app['config']->set('logging.channels.http_client', [
             'driver' => 'single',
-            'path' => storage_path('logs/http_client_test.log'),
+            'path' => $this->httpClientTestLogPath(),
             'level' => 'debug',
             'formatter' => LineFormatter::class,
             'formatter_with' => [
@@ -47,16 +47,22 @@ class TestCase extends Orchestra
         ]);
     }
 
+    protected function httpClientTestLogPath(): string
+    {
+        // Avoid storage_path(): Testbench uses vendor/.../storage, which is not writable on Windows CI.
+        return sys_get_temp_dir().DIRECTORY_SEPARATOR.'laravel-http-client-logger-http_client_test.log';
+    }
+
     protected function getLogContent(): string
     {
-        $path = storage_path('logs/http_client_test.log');
+        $path = $this->httpClientTestLogPath();
 
         return file_exists($path) ? file_get_contents($path) : '';
     }
 
     protected function clearLog(): void
     {
-        $path = storage_path('logs/http_client_test.log');
+        $path = $this->httpClientTestLogPath();
         if (file_exists($path)) {
             @unlink($path);
         }
