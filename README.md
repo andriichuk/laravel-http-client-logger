@@ -120,10 +120,12 @@ Register callbacks in your `AppServiceProvider::boot()` method using the `HttpCl
 
 ```php
 use Andriichuk\HttpClientLogger\HttpClientLogger;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 
 public function boot(): void
 {
-    HttpClientLogger::addCallback(function ($request, $response, $executionTimeMs) {
+    HttpClientLogger::addCallback(function (RequestInterface $request, ?ResponseInterface $response, float $executionTimeMs): void {
         // $response is null when the request failed (exception path)
         // Runs only when logging is enabled and (for success) status is reported
     });

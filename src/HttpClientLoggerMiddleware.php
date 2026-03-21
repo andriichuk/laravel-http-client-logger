@@ -229,6 +229,7 @@ final readonly class HttpClientLoggerMiddleware
     private function extractMultipartFilesMetadataFromRequest(RequestInterface $request): array
     {
         $contentType = $request->getHeaderLine('Content-Type');
+        
         if (! str_contains(strtolower($contentType), 'multipart/form-data')) {
             return [];
         }
@@ -239,6 +240,7 @@ final readonly class HttpClientLoggerMiddleware
         $boundary = trim($m[1] !== '' ? $m[1] : $m[2], '"');
 
         $stream = $request->getBody();
+        
         if (! $stream->isSeekable()) {
             return [];
         }
@@ -251,20 +253,26 @@ final readonly class HttpClientLoggerMiddleware
         $meta = [];
         $delim = "\r\n--".$boundary;
         $parts = $delim !== "\r\n--" ? explode($delim, $raw) : [$raw];
+        
         foreach ($parts as $i => $part) {
             if ($i === 0) {
                 $part = preg_replace('/^.*\r\n/', '', $part);
             }
+            
             if ($part === '' || $part === "--\r\n" || $part === '-') {
                 continue;
             }
+            
             $headerEnd = strpos($part, "\r\n\r\n");
+            
             if ($headerEnd === false) {
                 continue;
             }
+            
             $headers = substr($part, 0, $headerEnd);
             $contentDisposition = null;
             $contentTypePart = null;
+           
             foreach (explode("\r\n", $headers) as $line) {
                 if (stripos($line, 'Content-Disposition:') === 0) {
                     $contentDisposition = $line;
@@ -273,19 +281,24 @@ final readonly class HttpClientLoggerMiddleware
                     $contentTypePart = trim(substr($line, 12));
                 }
             }
+            
             if ($contentDisposition === null || ! preg_match('/name\s*=\s*"([^"]+)"/', $contentDisposition, $nameM)) {
                 continue;
             }
+            
             $name = $nameM[1];
             $filename = null;
+           
             if (preg_match('/filename\s*=\s*"([^"]*)"/', $contentDisposition, $fnM)) {
                 $filename = $fnM[1];
             } elseif (preg_match("/filename\s*=\s*'([^']*)'/", $contentDisposition, $fnM)) {
                 $filename = $fnM[1];
             }
+            
             if ($filename === null || $filename === '') {
                 continue;
             }
+            
             $extension = pathinfo($filename, PATHINFO_EXTENSION);
             $meta[] = [
                 'name' => $name,
