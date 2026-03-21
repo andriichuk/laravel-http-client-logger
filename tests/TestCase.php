@@ -49,8 +49,14 @@ class TestCase extends Orchestra
 
     protected function httpClientTestLogPath(): string
     {
-        // Avoid storage_path(): Testbench uses vendor/.../storage, which is not writable on Windows CI.
-        return sys_get_temp_dir().DIRECTORY_SEPARATOR.'laravel-http-client-logger-http_client_test.log';
+        // Testbench's storage_path() points under vendor/ (not writable on Windows CI). sys_get_temp_dir()
+        // can also fail there (short paths, locking). Use the package workspace, which is always writable.
+        $dir = dirname(__DIR__).DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'logs';
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        return $dir.DIRECTORY_SEPARATOR.'http_client_test.log';
     }
 
     protected function getLogContent(): string
