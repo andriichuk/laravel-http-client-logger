@@ -107,6 +107,31 @@ Http::log()->attach('avatar', $request->file('avatar'))->post('https://api.examp
 
 When `enabled` is `false` in config, the macro is still available but the middleware does not write any log entries.
 
+## Callbacks
+
+You can register one or more callbacks that run when a request is logged (after the same checks that allow logging: `enabled`, and for success responses, the status filter). Use this to push metrics, notify, or run custom logic whenever an outgoing request is logged.
+
+**Callback signature:** `(RequestInterface $request, ?ResponseInterface $response, float $executionTimeMs): void`
+
+- On **success** (in `logSuccess`), `$response` is the PSR-7 response.
+- On **exception** (in `logException`), `$response` is `null`.
+
+Register callbacks in your `AppServiceProvider::boot()` method using the `HttpClientLogger` facade:
+
+```php
+use Andriichuk\HttpClientLogger\HttpClientLogger;
+
+public function boot(): void
+{
+    HttpClientLogger::addCallback(function ($request, $response, $executionTimeMs) {
+        // $response is null when the request failed (exception path)
+        // Runs only when logging is enabled and (for success) status is reported
+    });
+}
+```
+
+Callbacks are invoked before the package writes to the log context. If a callback throws, the exception is not caught by the package and bubbles up to the caller.
+
 ## Example log output
 
 **Successful API call (200):** `INFO` level, with name and sanitized response.

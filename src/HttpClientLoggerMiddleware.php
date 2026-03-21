@@ -24,7 +24,8 @@ final readonly class HttpClientLoggerMiddleware
      */
     public function __construct(
         #[Config('http-client-logger', [])]
-        private array $config
+        private array $config,
+        private readonly HttpClientLoggerCallbackRegistry $callbacks
     ) {}
 
     /**
@@ -100,6 +101,8 @@ final readonly class HttpClientLoggerMiddleware
             return;
         }
 
+        $this->callbacks->invoke($request, $response, $timeMs);
+
         $prepared = $this->prepareRequestLogData($request, $context);
 
         $bodyStream = $response->getBody();
@@ -154,6 +157,8 @@ final readonly class HttpClientLoggerMiddleware
         if (! ($this->config['enabled'] ?? false)) {
             return;
         }
+
+        $this->callbacks->invoke($request, null, $timeMs);
 
         $prepared = $this->prepareRequestLogData($request, $context);
         $includeRequestHeaders = $this->config['include_request_headers'] ?? [];

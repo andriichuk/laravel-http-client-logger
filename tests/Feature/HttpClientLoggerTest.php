@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use Andriichuk\HttpClientLogger\HttpClientLogger;
+use Andriichuk\HttpClientLogger\HttpClientLoggerCallbackRegistry;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function (): void {
     $this->clearLog();
     config()->set('http-client-logger.channel', 'http_client');
+    app(HttpClientLoggerCallbackRegistry::class)->clearCallbacks();
 });
 
 test('middleware logs success: one log entry with method, URL and context', function (): void {
@@ -381,4 +384,74 @@ test('include_uploaded_files_metadata false omits uploaded_files from log contex
 
     $log = $this->getLogContent();
     expect($log)->not->toContain('uploaded_files');
+});
+
+test('callback is invoked on success with request, response and execution time', function (): void {
+    config()->set('http-client-logger.report', ['success' => true] + array_fill_keys(['info', 'redirect', 'client_error', 'server_error'], false));
+    Http::fake([
+        'https://example.com/callback' => Http::response('{"ok":true}', 200, ['Content-Type' => 'application/json']),
+    ]);
+
+    $receivedRequest = null;
+    $receivedResponse = null;
+    $receivedTimeMs = null;
+    HttpClientLogger::addCallback(function ($request, $response, $timeMs) use (&$receivedRequest, &$receivedResponse, &$receivedTimeMs): void {
+        $receivedRequest = $request;
+        $receivedResponse = $response;
+        $receivedTimeMs = $timeMs;
+    });
+
+    Http::log()->get('https://example.com/callback');
+
+    expect($receivedRequest)->not->toBeNull()
+        ->and($receivedResponse)->not->toBeNull();
+    assert($receivedRequest !== null && $receivedResponse !== null);
+    expect($receivedRequest->getUri()->__toString())->toContain('callback');
+    expect($receivedResponse->getStatusCode())->toBe(200);
+    expect($receivedTimeMs)->toBeNumeric();
+});
+
+test('callback is invoked on exception with request, null response and execution time', function (): void {
+    Http::fake([
+        'https://failing.example.com/*' => fn () => throw new ConnectionException('Connection refused'),
+    ]);
+
+    $receivedResponse = null;
+    HttpClientLogger::addCallback(function ($request, $response, $timeMs) use (&$receivedResponse): void {
+        $receivedResponse = $response;
+    });
+
+    try {
+        Http::log()->get('https://failing.example.com/bar');
+    } catch (ConnectionException) {
+        //
+    }
+
+    expect($receivedResponse)->toBeNull();
+});
+
+test('callback is not invoked when logging is disabled', function (): void {
+    config()->set('http-client-logger.enabled', false);
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    $callbackInvoked = false;
+    HttpClientLogger::addCallback(function () use (&$callbackInvoked): void {
+        $callbackInvoked = true;
+    });
+
+    Http::log()->get('https://example.com/quiet');
+
+    expect($callbackInvoked)->toBeFalse();
+});
+
+test('callback exception bubbles up', function (): void {
+    config()->set('http-client-logger.report', ['success' => true] + array_fill_keys(['info', 'redirect', 'client_error', 'server_error'], false));
+    Http::fake(['*' => Http::response('ok', 200)]);
+
+    HttpClientLogger::addCallback(function (): void {
+        throw new \RuntimeException('Callback error');
+    });
+
+    expect(fn () => Http::log()->get('https://example.com/throw'))
+        ->toThrow(\RuntimeException::class, 'Callback error');
 });

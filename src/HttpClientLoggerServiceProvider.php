@@ -15,6 +15,13 @@ class HttpClientLoggerServiceProvider extends PackageServiceProvider
             ->hasConfigFile();
     }
 
+    public function packageRegistered(): void
+    {
+        $this->app->singleton(HttpClientLoggerCallbackRegistry::class, function () {
+            return new HttpClientLoggerCallbackRegistry;
+        });
+    }
+
     public function bootingPackage(): void
     {
         PendingRequest::macro('name', function (string $name): PendingRequest {
