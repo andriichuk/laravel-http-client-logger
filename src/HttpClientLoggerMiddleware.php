@@ -325,12 +325,16 @@ final readonly class HttpClientLoggerMiddleware
             return [];
         }
 
+        // Header names are case-insensitive, so normalize the configured names too.
+        // Without this, a config entry like 'X-Request-Id' would never match.
+        $includeLower = array_map('strtolower', $include);
         $sensitiveLower = array_map('strtolower', $sensitive);
+        $includeAll = in_array('*', $includeLower, true);
         $result = [];
 
         foreach ($headers as $name => $values) {
             $nameLower = strtolower($name);
-            if (! in_array('*', $include, true) && ! in_array($nameLower, $include, true)) {
+            if (! $includeAll && ! in_array($nameLower, $includeLower, true)) {
                 continue;
             }
             $result[$name] = in_array($nameLower, $sensitiveLower, true) ? ['***'] : $values;

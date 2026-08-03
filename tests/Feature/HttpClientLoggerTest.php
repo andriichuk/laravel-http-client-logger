@@ -241,6 +241,25 @@ test('include_request_headers and include_response_headers filter to subset', fu
         ->and($log)->not->toContain('X-Request-Id');
 });
 
+test('include_request_headers and include_response_headers match names case-insensitively', function (): void {
+    // Header names are case-insensitive, so a configured name that is not already
+    // lowercased must still match the header on the wire.
+    config()->set('http-client-logger.include_request_headers', ['X-Custom-Id']);
+    config()->set('http-client-logger.include_response_headers', ['X-Request-Id']);
+
+    Http::fake([
+        '*' => Http::response('ok', 200, ['X-Request-Id' => 'response-value']),
+    ]);
+
+    Http::log()
+        ->withHeaders(['X-Custom-Id' => 'request-value'])
+        ->get('https://api.test/foo');
+
+    $log = $this->getLogContent();
+    expect($log)->toContain('request-value')
+        ->and($log)->toContain('response-value');
+});
+
 test('include_request_headers [*] includes all request headers', function (): void {
     config()->set('http-client-logger.include_request_headers', ['*']);
 
